@@ -9,8 +9,10 @@ of individual fear and experience of violence as measured by the [Afrobarometer]
 Ethiopia, South Africa and Kenya.  
 
 The scripts in this repository are written in a mix of Python and R. Most are designed to be operated from the 
-command line, but the thesis figures are produced using Jupyter Notebooks and R Markdowns. Two Jupyter Notebook for 
-preprocessing the data run inside an ArcGIS Pro project file (ArcGIS Pro operates only on Windows OS).
+command line, but the thesis figures are produced using Jupyter Notebooks and R Markdowns.
+
+The data are available at [afrobarometer-fear-violence-drive](https://drive.google.com/drive/folders/17uVDb_O3bwmzv2DRca-LNa15jkRg28dB?usp=sharing). If you intend to replicate the work, download this entire folder, which also contains
+the scripts. 
 
 The respondent-level Afrobarometer Round 8 data used in the study are not made available, in compliance with the 
 Afrobarometer data policy, but they can be requested at https://www.afrobarometer.org/contact-us/data-requests/.
@@ -52,7 +54,8 @@ Afrobarometer data policy, but they can be requested at https://www.afrobaromete
 ## INSTRUCTIONS FOR REPLICATION
 
 The results of the regressions are included in the repository (skip to the end to see how to create the figures and tables
-describing them), but you can follow these instructions to replicate them step by step.
+describing them), but you can follow these instructions to replicate them step by step. These instructions assume that you
+have downloaded the data folder with scripts and data files.
 
 ### Pre-processing the Afrobarometer respondent-level data
 
