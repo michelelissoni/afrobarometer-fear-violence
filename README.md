@@ -81,7 +81,7 @@ This part is optional as the processed data are already provided.
    Google Earth Engine project. You will also have to upload manually the PSU polygons 
    (*GIS/[COUNTRY\_ACRONYM]/[COUNTRY\_STRING]\_R8\_PSU\_polys\_2.shp*, included in the repository) to your GEE assets beforehand.
    
-5. Open the ArcGIS Pro project *ArcGIS/arcgis1.aprx* and run the *ArcGIS/urban\_rural.ipynb* Jupyter Notebook from
+5. Open the ArcGIS Pro project *ArcGIS/arcgis1.aprx* (ArcGIS Pro is proprietary software and runs only in Windows) and run the *ArcGIS/urban\_rural.ipynb* Jupyter Notebook from
    inside the project to obtain the urban-rural binary variable, saved in the files
    *Afrobarometer/[COUNTRY\_ACRONYM]/[COUNTRY\_STRING]\_Urb\_Rur.csv* (included in the repository).  
    
@@ -153,5 +153,6 @@ The results of these regressions are included in the repository.
     
 13. Use the *data\_statistics.Rmd* R Markdown to generate all the other figures and the Latex table containing the number of
     regression models in which each variable was significant.
+    
 14. Run the *table_viewer.R* with the appropriate [OUT_INDEX] command line arguments to print the Latex tables showing
     the regression results for the outcome variables.
