@@ -1,0 +1,1088 @@
+---
+title: "Multi-level model"
+author: Michele Lissoni
+output: 
+  html_document:
+    css: "lab.css"
+editor_options: 
+  markdown: 
+    wrap: 72
+params:
+  args: ''
+---
+
+```{r setup, include=FALSE}
+# Setup the environment
+library(knitr)
+knitr::opts_chunk$set(fig.align='center',fig.width=10, fig.height=6, fig.path='Figs/',  warning=FALSE, echo=TRUE, eval=TRUE, message=FALSE)
+
+r = getOption("repos")
+r["CRAN"] = "http://cran.us.r-project.org"
+options(repos = r)
+```
+
+This R markdown generates the thesis figures.
+
+```{r, echo=T, eval=T}
+library(ggplot2)
+library(sf)
+library(ggh4x)
+library(dplyr)
+library(tidyr)
+library(car)
+library(ggcorrplot)
+library(reshape2)
+library(stringr)
+library(grid)
+library(gridExtra)
+library(abind)
+library(deldir)
+library(sf)
+library(spdep)
+library(ggpubr)
+library(cowplot)
+```
+
+Distribution of the original responses to the conflict fear/experience questions (WARNING: this cell will not work as the original Afrobarometer data cannot be freely shared).
+
+```{r, fig.width=8, fig.height=5}
+
+kenya_file <- "Afrobarometer/KEN/KEN_R8.Data.wtd.final_31May23.csv"
+ethiopia_file <- "Afrobarometer/ETH/ETH_R8.Data.wtd.final_31May23.csv"
+southafrica_file <- "Afrobarometer/SAF/SAF_R8.Data.wtd.final_1JUN23.csv"
+nigeria_file <- "Afrobarometer/NIG/NIG_R8.Data.wtd.final_1JUN23.csv"
+
+kenya_data0 <- read.csv(kenya_file,1)
+ethiopia_data0 <- read.csv(ethiopia_file,1)
+southafrica_data0 <- read.csv(southafrica_file,1)
+nigeria_data0 <- read.csv(nigeria_file,1)
+
+qcols_func <- function(afrob_df){
+  afrob_cols <- colnames(afrob_df)
+  q_afrob_cols <- afrob_cols[startsWith(afrob_cols, 'Q')]
+  q_afrob_cols <- str_split_i(q_afrob_cols,'\\.',1)
+  afrob_cols[startsWith(afrob_cols, 'Q')] <- q_afrob_cols
+  colnames(afrob_df) <- afrob_cols
+  return(afrob_df)
+}
+
+kenya_data0 <- qcols_func(kenya_data0)
+ethiopia_data0 <- qcols_func(ethiopia_data0)
+nigeria_data0 <- qcols_func(nigeria_data0)
+southafrica_data0 <- qcols_func(southafrica_data0)
+
+
+
+out_vars <- c("Q54a","Q54b","Q54c")
+
+kenya_data <- kenya_data0[,out_vars] 
+ethiopia_data <- ethiopia_data0[,out_vars] 
+southafrica_data <- southafrica_data0[,out_vars] 
+nigeria_data <- nigeria_data0[,out_vars]
+
+all_data <- rbind(kenya_data, ethiopia_data, southafrica_data, nigeria_data)
+
+responses <- c("Neither feared nor experienced", "Feared, but didn't experience", "Feared and experienced", "Don't know")
+response_value <- c(1,0,-1,2)
+
+ethiopia_summ <- ethiopia_data %>% summarise_all(table) %>% as.data.frame() %>%  mutate(across(everything(), ~./sum(.))) %>%  mutate(Response= responses, Value = response_value) %>% arrange(Value) %>% pivot_longer(cols = -c(Response, Value), names_to = "Question", values_to = "Resp") %>% mutate(Country='Ethiopia', Country_Num=1)
+kenya_summ <- kenya_data %>% summarise_all(table) %>% as.data.frame() %>%  mutate(across(everything(), ~./sum(.))) %>%  mutate(Response= responses, Value = response_value) %>% arrange(Value) %>% pivot_longer(cols = -c(Response, Value), names_to = "Question", values_to = "Resp") %>% mutate(Country='Kenya', Country_Num=3)
+southafrica_summ <- southafrica_data %>% summarise_all(table) %>% as.data.frame() %>%  mutate(across(everything(), ~./sum(.))) %>%  mutate(Response= responses, Value = response_value) %>% arrange(Value) %>% pivot_longer(cols = -c(Response, Value), names_to = "Question", values_to = "Resp") %>% mutate(Country='South Africa', Country_Num=2)
+nigeria_summ <- nigeria_data %>% summarise_all(table) %>% as.data.frame() %>%  mutate(across(everything(), ~./sum(.))) %>%  mutate(Response= responses, Value = response_value) %>% arrange(Value) %>% pivot_longer(cols = -c(Response, Value), names_to = "Question", values_to = "Resp") %>% mutate(Country='Nigeria', Country_Num=0)
+all_summ <- all_data %>% summarise_all(table) %>% as.data.frame() %>%  mutate(across(everything(), ~./sum(.))) %>%  mutate(Response= responses, Value = response_value) %>% arrange(Value) %>% pivot_longer(cols = -c(Response, Value), names_to = "Question", values_to = "Resp") %>% mutate(Country='All countries', Country_Num=4)
+
+final_summ <- rbind(kenya_summ, ethiopia_summ, southafrica_summ, nigeria_summ, all_summ) 
+final_summ <- final_summ %>% mutate(Q_Num = case_when(
+    Question == "Q54a" ~ 0,
+    Question == "Q54b" ~ 1,
+    Question == "Q54c" ~ 2))
+
+q_labels <- rep(c("Q54a","Q54b","Q54c"),5) 
+q_breaks <- rep(c(0,1,2,3,4)*4,each=3)+rep(c(0,1,2),5)
+
+fear_height <- final_summ %>% filter(Value<1) %>% group_by(Country_Num, Q_Num) %>%
+  summarise(height=sum(Resp), position=Country_Num*4+Q_Num)
+experience_height <- final_summ %>% filter(Value<0) %>% group_by(Country_Num, Q_Num) %>%
+  summarise(height=sum(Resp), position=Country_Num*4+Q_Num)
+
+ggplot(arrange(final_summ, Value), aes(x = Country_Num*4 + Q_Num, y = Resp, fill = as.factor(Value))) +
+  geom_bar(stat = "identity", position = position_stack(reverse=TRUE)) +
+  scale_fill_manual(values = c('#ff0000','#ff9933','#b3b3b3','#808080'), labels=responses[order(response_value)]) +
+  scale_x_continuous(breaks=c(1,5,9,13,17), minor_breaks=c(-1,3,7,11,15,19),labels=c('Nigeria\n(1599)','Ethiopia\n(2378)','South Africa\n(1600)','Kenya\n(2400)','All countries\n(7977)'),guide=guide_axis_minor()) +
+  scale_y_continuous(breaks=(0:10)/10, labels=(0:10)*10, limits=c(-0.01,1.1)) +
+  annotate("text", x = q_breaks, y = -0.01, label = q_labels, vjust = 1, size = 3.25) +
+  theme(axis.ticks.length.x=unit(0.01,'pt'), ggh4x.axis.ticks.length.minor = rel(300), axis.text.x = element_text(color = "black", size=10), axis.text.y = element_text(color = "black", size=10),
+        axis.title.x = element_text(size=11, face="bold", colour = "black", vjust=-1), axis.title.y = element_text(size=11, face="bold", colour = "black"), 
+        legend.position = "bottom", legend.direction = "horizontal", legend.text=element_text(size=10)) +
+  labs(x = "Question",
+       y = "% Respondents",
+       fill = "") +
+  geom_text(data = experience_height, aes(x=position, label = paste0(as.character(round(height*100)),"%")), inherit.aes=FALSE, y=1.03, vjust = 0, color = "black", size = 3.25) +
+  geom_text(data = fear_height, aes(x=position, label = paste0(as.character(round(height*100)),"%")), inherit.aes=FALSE, y=1.07, vjust = 0, color = "black", size = 3.25) +
+  coord_cartesian(xlim = c(-0.5,18),ylim = c(-0.01,1.06), clip = "off") +
+  annotate("text", x = -2.2, y = c(1.03,1.07), label = c('Experience','Fear'), vjust = 0, hjust=0, size = 3.25)
+
+```
+
+Proportion of invalid responses for all four countries aggregated
+
+```{r}
+kenya_data <- read.csv("Afrobarometer/KEN/kenya_afrob_vars.csv", header=TRUE)
+ethiopia_data <- read.csv("Afrobarometer/ETH/ethiopia_afrob_vars.csv", header=TRUE)
+southafrica_data <- read.csv("Afrobarometer/SAF/southafrica_afrob_vars.csv", header=TRUE)
+nigeria_data <- read.csv("Afrobarometer/NIG/nigeria_afrob_vars.csv", header=TRUE)
+
+kenya_X <- select(kenya_data, -c(X, Respondent, EA_Num, EA_weight, HH_weight, Latitude, Longitude, Q54a, Q54b, Q54c))
+ethiopia_X <- select(ethiopia_data, -c(X, Respondent, EA_Num, EA_weight, HH_weight, Latitude, Longitude, Q54a, Q54b, Q54c))
+southafrica_X <- select(southafrica_data, -c(X, Respondent, EA_Num, EA_weight, HH_weight, Latitude, Longitude, Q54a, Q54b, Q54c))
+nigeria_X <- select(nigeria_data, -c(X, Respondent, EA_Num, EA_weight, HH_weight, Latitude, Longitude, Q54a, Q54b, Q54c))
+all_X <- rbind(kenya_X,ethiopia_X, southafrica_X, nigeria_X)
+
+kenya_nasum <- colSums(is.na(kenya_X))/nrow(kenya_X)
+ethiopia_nasum <- colSums(is.na(ethiopia_X))/nrow(ethiopia_X)
+southafrica_nasum <- colSums(is.na(southafrica_X))/nrow(southafrica_X)
+nigeria_nasum <- colSums(is.na(nigeria_X))/nrow(nigeria_X)
+all_nasum <- colSums(is.na(all_X))/nrow(all_X)
+
+questions <- c(
+    "Q0",
+    "Q1",
+    "Q3",
+    "Q4b",
+    "Q5",
+    "Q7a",
+    "Q10a",
+    "Q43a",
+    "Q56",
+    "Q81",
+    "Q82a",
+    "Q84a",
+    "Q84b",
+    "Q84c",
+    "Q88",
+    "Q96c",
+    "Q97",
+    "Q98b"
+)
+
+nasums <- data.frame(t(all_nasum))
+nasums_summ <- nasums %>% pivot_longer(cols = everything(), names_to = "Question", values_to = "Nasum") %>% mutate(Q_Num = seq_along(questions)[match(Question, questions)] )
+ggplot(nasums_summ, aes(x = Q_Num, y = Nasum*100)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Question",
+       y = "% Invalid Responses") +
+  scale_x_continuous(breaks=1:length(questions),labels=questions, limits=c(1,length(questions))) +
+  theme(axis.ticks.length.x=unit(0,'pt'), axis.text.x = element_text(size=10), axis.text.y = element_text(size=10)) +
+  scale_y_continuous(expand = expansion(mult = c(0, .1)))
+```
+ACLED events in the four countries (peaceful protests and others)
+
+```{r}
+countries <- c('Nigeria', 'Ethiopia', 'South Africa', 'Kenya')
+
+acled_len_tot <- c(4580,1206,3512,1222) # Retrieved manually
+
+acled_len_nopeace <- c(3563, 871, 1642, 921) # Retrieved manually
+acled_len_peace <- acled_len_tot - acled_len_nopeace
+
+acled_lens <- rep(0,8)
+protest <- rep(0,8)
+x_num <- rep(0,8)
+acled_lens[0:3*2+1] <- acled_len_nopeace
+acled_lens[0:3*2+2] <- acled_len_peace
+protest[0:3*2+1] <- 1
+protest[0:3*2+2] <- 0
+x_num[0:3*2+1] <- 0:3*3
+x_num[0:3*2+2] <- 0:3*3+1
+
+acled_df <- data.frame(X=x_num, Protest=as.factor(protest), Y=acled_lens)
+
+ggplot(acled_df, aes(x = X, y = Y, fill = Protest)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Country",
+       y = "# Events",
+       fill = "Event type") +
+  scale_x_continuous(breaks=0:3*3 + 0.5,labels=countries, limits=c(-0.5,10.5)) +
+  scale_fill_manual(values=c('#00ccff','#ff5050'),labels=c("Peaceful protest","Other")) +
+  theme(axis.ticks.length.x=unit(0,'pt'), axis.text.x = element_text(size=10), axis.text.y = element_text(size=10), legend.text=element_text(size=10)) +
+  scale_y_continuous(expand = expansion(mult = c(0, .1)))
+
+
+
+```
+AUC values for the regressions with the various buffer alternatives
+
+```{r, fig.width=10}
+
+auc_df <- as.data.frame(readRDS("Results/auc_bj_allcountries_percents.Rda")) %>% setNames(c('Q54aF','Q54aE','Q54bF','Q54bE','Q54cF','Q54cE'))
+auc_df <- rbind(c(0.7745286, 0.8284113, 0.7770282, 0.8035889, 0.7866968, 0.8594418),auc_df) # PSU polygons: retrieved manually
+auc_df <- auc_df %>% mutate(percents=c(100,200,300,400,500,750,1000))
+
+auc_df2 <- auc_df %>% pivot_longer(cols=-c(percents), names_to="Questions", values_to="AUC") %>% mutate(Variable=ifelse(substr(Questions,nchar(Questions),nchar(Questions))=='F','Fear','Experience'), Q=substr(Questions,0,nchar(Questions)-1))
+
+auc_maxs <- auc_df2 %>% group_by(Q,Variable) %>% summarise(max_value = max(AUC), percents= percents[which.max(AUC)]) 
+
+auc_km <- as.data.frame(readRDS("Results/auc_bj_allcountries_kms.Rda")) %>% setNames(c('Q54aF','Q54aE','Q54bF','Q54bE','Q54cF','Q54cE'))
+auc_km <- rbind(c(0.7745286, 0.8284113, 0.7770282, 0.8035889, 0.7866968, 0.8594418),auc_km) # PSU polygons: retrieved manually
+
+auc_km <- auc_km %>% mutate(kms=c(0.5,1,2,5,10,20,50))
+
+auc_km2 <- auc_km %>% pivot_longer(cols=-c(kms), names_to="Questions", values_to="AUC") %>% mutate(Variable=ifelse(substr(Questions,nchar(Questions),nchar(Questions))=='F','Fear','Experience'), Q=substr(Questions,0,nchar(Questions)-1))
+auc_km_maxs <- auc_km2 %>% group_by(Q,Variable) %>% summarise(max_value = max(AUC), kms= kms[which.max(AUC)]) 
+
+
+g2 <- ggplot()+
+  geom_line(subset(auc_km2), mapping=aes(x=kms,y=AUC, color=Q, linetype=Variable), show.legend=FALSE) +
+  geom_point(subset(auc_km2), mapping=aes(x=kms,y=AUC, color=Q, shape=Variable), size=2) +
+  geom_point(subset(auc_km_maxs), mapping=aes(x=kms,y=max_value, color=Q, shape=Variable), size=5, show.legend=FALSE) +
+  labs(x = "Buffer distance (km)", y = "AUC", color="Question") +
+  scale_x_continuous(breaks=c(0.5,1,2,5,10,20,50),labels=c('PSU\npolygon', 1,2,5,10,20,50), trans='log10') +
+  theme(axis.text.x = element_text(size=10), axis.text.y = element_text(size=10), legend.position = "none") +
+  scale_y_continuous(breaks=(0:12)*0.01+0.77, limits=c(0.77,0.87)) 
+
+g1 <- ggplot()+
+  geom_line(subset(auc_df2), mapping=aes(x=percents,y=AUC, color=Q, linetype=Variable), show.legend=FALSE) +
+  geom_point(subset(auc_df2), mapping=aes(x=percents,y=AUC, color=Q, shape=Variable), size=2) +
+  geom_point(subset(auc_maxs), mapping=aes(x=percents,y=max_value, color=Q, shape=Variable), size=5, show.legend=FALSE) +
+  labs(x = "Buffer area (% area PSU)", y = "", color="Question") +
+  scale_x_continuous(breaks=1:10*100,labels=c('PSU\npolygon', 2:10*100)) +
+  theme(axis.text.x = element_text(size=10), axis.text.y = element_text(size=10), plot.margin = unit(c(5.5,5.5,5.5,5.5), "pt"), legend.text=element_text(size=10)) +
+  scale_y_continuous(breaks=(0:12)*0.01+0.77, labels=c(),limits=c(0.77,0.87))
+
+grid.arrange(g2, g1, ncol = 2, widths=c(1,1.3))
+```
+AUC diagram for the thirty regressions
+
+```{r}
+auc_arr <- readRDS("Results/auc_bj.Rda")
+all_auc_arr <- readRDS("Results/auc_bj_allcountries.Rda")
+
+auc_arr <- abind(auc_arr,all_auc_arr, along=1)
+
+auc_df <- as.data.frame(auc_arr) %>% setNames(c('Q54aF','Q54aE','Q54bF','Q54bE','Q54cF','Q54cE')) %>% mutate(Countries = c('Kenya','Ethiopia','South Africa', 'Nigeria', 'All countries'))
+auc_df2 <- auc_df %>% pivot_longer(cols=-c(Countries), values_to="AUC", names_to="Questions") %>% mutate(Variable=ifelse(substr(Questions,nchar(Questions),nchar(Questions))=='F','Fear','Experience'), Q=substr(Questions,0,nchar(Questions)-1)) %>% mutate(Q_Num = case_when(
+    Questions == "Q54aF" ~ 0,
+    Questions == "Q54aE" ~ 3,
+    Questions == "Q54bF" ~ 1,
+    Questions == "Q54bE" ~ 4,
+    Questions == "Q54cF" ~ 2,
+    Questions == "Q54cE" ~ 5))
+
+auc_maxs <- auc_df2 %>% group_by(Countries) %>% summarise(max_AUC = max(AUC), Q_Num= Q_Num[which.max(AUC)]) %>% mutate(Stat='Maximum')
+auc_mins <- auc_df2 %>% group_by(Countries) %>% summarise(min_AUC = min(AUC), Q_Num= Q_Num[which.min(AUC)]) %>% mutate(Stat='Minimum')
+
+ggplot(auc_df2, aes(x = Q_Num, y = AUC, color = Countries)) +
+  geom_line(show.legend=FALSE) +
+  geom_point(size=2, show.legend=FALSE) +
+  geom_point(auc_maxs, mapping=aes(x = Q_Num, y = max_AUC, color = Countries, shape=Stat), size=4) +
+  geom_point(auc_mins, mapping=aes(x = Q_Num, y = min_AUC, color = Countries, shape=Stat), size=4) +
+  scale_shape_manual(values=c(17,15)) +
+  geom_vline(xintercept = 2.5) +
+  labs(x="", y="AUC", shape="") +
+  scale_x_continuous(breaks=0:5, labels=c('Q54a','Q54b','Q54c','Q54a','Q54b','Q54c'), minor_breaks=c(2.5),guide=guide_axis_minor()) +
+  scale_y_continuous(breaks=0:4*0.05+0.7, minor_breaks=0:16*0.0125+0.7) +
+  theme(ggh4x.axis.ticks.length.minor = rel(15), axis.text.x = element_text(color = "black", size=12, margin = margin(t = -35)), axis.text.y = element_text(color = "black", size=12), legend.text = element_text(color = "black", size=11), legend.title = element_text(color = "black", size=13), axis.title.y = element_text(color = "black", face="bold", size=14), panel.grid.minor.x = element_line(size = 1.5)) +
+  coord_cartesian(ylim = c(0.7,0.9), clip = "off") +
+  annotate("text", x = c(1,4), y = 0.7, label = c('Fear','Experience'), vjust = 5, hjust=0.5, size = 5, fontface="bold", colour = "black")
+
+auc_mins
+auc_maxs
+```
+
+Variance explained by the random effects
+
+```{r}
+ranvar_arr <- readRDS("Results/ranvar_bj.Rda")
+all_ranvar_arr0 <- readRDS("Results/ranvar_bj_allcountries.Rda")
+
+ranvar_arr <- apply(ranvar_arr, c(1,3), sum)
+all_ranvar_arr <- apply(all_ranvar_arr0, c(2), sum)
+ranvar_arr <- abind(ranvar_arr,all_ranvar_arr, along=1)
+
+ranvar_arr <- ranvar_arr/(ranvar_arr+pi^2/3)*100
+all_ranvar_arr0
+all_ranvar_arr+pi^2/3
+all_ranvar_arr0[1,]/(all_ranvar_arr+pi^2/3)
+ranvar_arr <- abind(ranvar_arr, all_ranvar_arr0[1,]/(all_ranvar_arr+pi^2/3)*100,all_ranvar_arr0[2,]/(all_ranvar_arr+pi^2/3)*100, along=1)
+
+ranvar_df <- as.data.frame(ranvar_arr) %>% setNames(c('Q54aF','Q54aE','Q54bF','Q54bE','Q54cF','Q54cE')) %>% mutate(Countries = c('Kenya','Ethiopia','South Africa', 'Nigeria', 'All countries','All countries','All countries'),Random=c('PSU','PSU','PSU','PSU','All','PSU','Country'))
+ranvar_df2 <- ranvar_df %>% pivot_longer(cols=-c(Countries,Random), values_to="VAR", names_to="Questions") %>% mutate(Variable=ifelse(substr(Questions,nchar(Questions),nchar(Questions))=='F','Fear','Experience'), Q=substr(Questions,0,nchar(Questions)-1)) %>% mutate(Q_Num = case_when(
+    Questions == "Q54aF" ~ 0,
+    Questions == "Q54aE" ~ 3,
+    Questions == "Q54bF" ~ 1,
+    Questions == "Q54bE" ~ 4,
+    Questions == "Q54cF" ~ 2,
+    Questions == "Q54cE" ~ 5), C_Num = case_when(
+    Countries == "Nigeria" ~ 0,
+    Countries == "Ethiopia" ~ 1,
+    Countries == "South Africa" ~ 2,
+    Countries == "Kenya" ~ 3,
+    Countries == "All countries" ~ 4)
+    ) %>% mutate(H_Num = C_Num*9+Q_Num)
+
+ranvar_maxs <- ranvar_df2 %>% group_by(Countries,Random) %>% summarise(max_VAR = max(VAR), Q_Num= Q_Num[which.max(VAR)]) %>% mutate(Stat='Maximum')
+ranvar_mins <- ranvar_df2 %>% group_by(Countries,Random) %>% summarise(min_VAR = min(VAR), Q_Num= Q_Num[which.min(VAR)]) %>% mutate(Stat='Minimum')
+
+ggplot(ranvar_df2, aes(x = Q_Num, y = VAR, color = Countries)) +
+  geom_line(mapping=aes(linetype=Random), show.legend=TRUE) +
+  scale_linetype_manual(values=c('longdash','dotted','solid')) +
+  geom_point(size=2, show.legend=FALSE) +
+  geom_point(ranvar_maxs, mapping=aes(x = Q_Num, y = max_VAR, color = Countries, linetype=NULL, shape=Stat), size=4) +
+  geom_point(ranvar_mins, mapping=aes(x = Q_Num, y = min_VAR, color = Countries, linetype=NULL, shape=Stat), size=4) +
+  scale_shape_manual(values=c(17,15)) +
+  geom_vline(xintercept = 2.5) +
+  labs(x="", y="Variance explained by random effects (%)", shape="", linetype='Random\neffects') +
+  scale_x_continuous(breaks=0:5, labels=c('Q54a','Q54b','Q54c','Q54a','Q54b','Q54c'), minor_breaks=c(2.5),guide=guide_axis_minor()) +
+  scale_y_continuous(breaks=0:5*5, minor_breaks=0:20*1.25) +
+  theme(ggh4x.axis.ticks.length.minor = rel(15), axis.text.x = element_text(color = "black", size=12, margin = margin(t = -35)), axis.text.y = element_text(color = "black", size=12), legend.text = element_text(color = "black", size=11), legend.title = element_text(color = "black", size=13), axis.title.y = element_text(color = "black", face="bold", size=14), panel.grid.minor.x = element_line(size = 1.5)) +
+  coord_cartesian(ylim = c(0,25), clip = "off") +
+  annotate("text", x = c(1,4), y = 0, label = c('Fear','Experience'), vjust = 5, hjust=0.5, size = 5, fontface="bold", colour = "black")
+
+ranvar_mins
+ranvar_maxs
+```
+
+Caterpillar plot of the country-level random effects
+
+```{r}
+questions <- c('Q54a Fear','Q54a Exp','Q54b Fear','Q54b Exp','Q54c Fear','Q54c Exp')
+question_codes <- c('Q54aF','Q54aE','Q54bF','Q54bE','Q54cF','Q54cE')
+
+for(i in 1:length(questions)){
+  question <- questions[i]
+  question_code <- question_codes[i]
+  
+  ran_df0 <- readRDS(paste0('Results/ranef/ranef_allcountries_',question_code,'.Rda')) %>% filter(grpvar=="Country")
+  ran_df0$question <- question
+  ran_df0$Q_Num <- i-1
+  ran_df0$C_Num <- 1:4
+  
+  if(i==1){
+    ran_df <- ran_df0
+  }else{
+    ran_df <- rbind(ran_df,ran_df0)
+  }
+}
+
+ran_df <- ran_df %>% mutate(Order=order(order(condval))) %>% arrange(Order)
+
+ggplot(ran_df) +
+  geom_vline(xintercept=0,linewidth=0.25) +
+  geom_point(mapping=aes(x=condval,y=Order,color=question)) +
+  geom_errorbarh(mapping=aes(xmin=condval-condsd,xmax=condval+condsd,y=Order,color=question))+
+  scale_y_continuous(breaks=1:length(ran_df$grp), minor_breaks=c(), labels=ran_df$grp) +
+  labs(x="Random effect", y="Country", color="Outcome")
+  
+  
+
+```
+
+
+This cell assembles the input data of the Bell-Jones for analysis. Run it before running the next six
+
+```{r}
+belljones_vars <- function(x, variables, scales, scale_list, index_list){
+  
+  for(j in 2:length(scale_list)){
+    scale <- scale_list[j]
+    scale_prev <- scale_list[j-1]
+    index <- index_list[j]
+    
+    vars_prev <- variables[scales==scale_prev]
+    
+    vars_prev_new <- paste0(vars_prev, "_", scale_prev)
+    
+    prev_means <- x[,c(vars_prev, index)] %>%
+      group_by_at(index) %>%
+      summarise(across(.cols=all_of(vars_prev), \(x) mean(x, na.rm = TRUE)))
+    
+    x <- x %>%
+      rename_with(~vars_prev_new, .cols=all_of(vars_prev)) %>%
+      merge(prev_means, by=index)
+    
+    x[,vars_prev_new] <- x[,vars_prev_new]-x[,vars_prev]
+    
+    variables <- c(vars_prev_new, variables)
+    scales[scales==scale_prev] <- scale
+    scales <- c(rep(scale_prev,length(vars_prev_new)),scales)
+    
+    if(j==length(scale_list)){
+      
+      x <- x %>%
+        rename_with(~paste0(variables[scales==scale], "_", scale), .cols=all_of(variables[scales==scale])) 
+      
+      variables[scales==scale] <- paste0(variables[scales==scale], "_", scale)
+    }
+  }
+  return(list("data"=x, "variables"=variables, "scales"=scales))
+}
+
+country_list <- list(
+		'kenya'=list(
+			'acronym'='KEN',
+			'name'='Kenya'),
+		'ethiopia'=list(
+			'acronym'='ETH',
+			'name'='Ethiopia'),
+		'southafrica'=list(
+			'acronym'='SAF',
+			'name'='South Africa'),
+		'nigeria'=list(
+			'acronym'='NIG',
+			'name'='Nigeria')
+		)
+
+countries <- names(country_list)
+
+outcome_qs <- c('Q54a', 'Q54b', 'Q54c')
+feareds <- c(TRUE, FALSE)
+weighted <- FALSE
+
+vars_list <- list(
+	'Resp'=list(
+		'variables'=c(
+			"Q0",
+			"Q1",
+			"Q3",
+			"Q4b",
+			"Q5",
+			"Q7a",
+			"Q10a",
+			"Q43a",
+			"Q56",
+			"Q81",
+			"Q82a",
+			"Q84a",
+			"Q84b",
+			"Q84c",
+			"Q88",
+			"Q96c",
+			"Q97",
+			"Q98b"
+			),
+		'files'= c('_afrob_imp.csv'),
+		'index'=''
+		),	
+	'EA'=list(
+		'variables'=c("Urb_Rur", "AEZ_Temp", "AEZ_Mois", "nighttime", "rfe_anoms", "LST_anoms", "NDVI_anoms", "Events"),
+		'files'=c('_Urb_Rur.csv', '_AEZ_PSU.csv', '_vars_PSU_poly_2.csv'),
+		'index'='EA_Num'
+		)
+	)
+
+all_vars <- c()
+all_scales <- c()
+scale_list <- names(vars_list)
+index_list <- c()
+
+for(scale in scale_list){
+	vars_vector <- vars_list[[scale]]$variables
+	vars_index <- vars_list[[scale]]$index
+	
+	all_vars <- c(all_vars, vars_vector)
+	all_scales <- c(all_scales, rep(scale, length(vars_vector)))
+	
+	index_list <- c(index_list, vars_index)
+}
+
+coef_arrays <- list()
+pvalue_arrays <- list()
+
+for(scale in scale_list){
+
+	coef_arrays[[scale]] <- array(dim=c(length(all_vars), length(outcome_qs)*length(feareds)))
+	pvalue_arrays[[scale]] <- array(dim=c(length(all_vars), length(outcome_qs)*length(feareds)))
+	
+}
+
+auc_arr <- array(dim=c(length(outcome_qs)*length(feareds)))
+
+for(n in 1:length(countries)){
+
+	country <- countries[n]
+	country_acronym <- country_list[[country]]$acronym
+	
+	## FOLDER
+
+	folder <- paste0('Afrobarometer/',country_acronym,'/')
+		
+	## MODEL VARIABLES
+
+	for(i in 1:length(scale_list)){
+		scale <- scale_list[i]
+		index <- index_list[i]
+		
+		file_list <- vars_list[[scale]]$files
+		
+		
+		for(q in 1:length(file_list)){
+		
+			file <- file_list[q]
+			file_data <- read.csv(paste0(folder, country, file))
+			
+			if(file=='_AEZ_PSU.csv'){					
+				file_data <- file_data %>%
+					mutate(AEZ_Temp=floor(AEZ_Num/100), AEZ_Mois=AEZ_Num %% 100)					
+			}
+			
+			if(q==1 & i==1){					
+				all_data <- file_data
+			}else{					
+				all_data <- merge(all_data, file_data, by=index)
+			}
+			
+		}				
+	}
+
+	all_data[['Country']] <- country_acronym
+	
+	for(index in index_list){
+		all_data[[index]] <- paste0(all_data[[index]],country_acronym)
+	}
+	
+	if(n==1){
+		all_countries_data <- all_data[c(all_vars, index_list[2:length(index_list)], 'Country', outcome_qs, "HH_weight")]
+	}else{
+		all_countries_data <- rbind(all_countries_data, all_data[c(all_vars, index_list[2:length(index_list)], 'Country', outcome_qs, "HH_weight")])
+	}
+}
+
+a <- belljones_vars(all_countries_data, all_vars, all_scales, scale_list, index_list)
+
+all_countries_data_bj <- a$data
+vars_bj  <- a$variables
+scales <- a$scales
+
+```
+
+Local Moran's I computation and mapping
+
+```{r, fig.width=12, fig.height=14}
+library(rgeoda)
+
+global_Morans <- array(dim=c(length(countries),length(outcome_qs)*length(feareds)))
+global_Morans_p <- array(dim=c(length(countries),length(outcome_qs)*length(feareds)))
+
+gt_list = list()
+
+for(outcome_q_num in 1:6){
+
+  
+  outcome_q <- outcome_qs[floor((outcome_q_num-1)/2)+1]
+  feared <- feareds[2-(outcome_q_num%%2)]
+  
+  variable <- 'OUT'
+  
+  signif <- 0.05
+  
+  if(feared){
+  	pos_values <- c(1,2)
+  	outvar_name <- 'Fear'
+  } else{
+  	pos_values <- c(2)
+  	outvar_name <- 'Experience'
+  }
+  
+  colors_moran <- c("gray",'#33ccff','#ff9999',"blue","red")
+  
+  gg_list <- list()
+  globalmoran_list <- c()
+  globalmoran_p <- c()
+  
+  I <-0
+  for(country in countries){
+  
+    country_acronym <- country_list[[country]]$acronym
+    country_name <- country_list[[country]]$name
+    country_data <- all_countries_data[all_countries_data$Country==country_acronym,]
+    
+    country_data$OUT <- ifelse(country_data[[outcome_q]] %in% pos_values, 1, 0)
+    country_data$EA_Num <- as.integer(gsub(country_acronym, "", country_data$EA_Num))
+    
+    country_data <- country_data %>% select(c('EA_Num',variable)) %>% group_by(EA_Num) %>% summarise(Variable=mean(.data[[variable]], na.rm = TRUE))
+    
+    centroids <- select(st_read(paste0('GIS/',country_acronym,'/',country_acronym,'_R8_PSU_centroids.shp'), quiet=TRUE),c("geometry","EA_Num"))
+    
+    country_polygons <- st_read('GIS/world_countries.shp', quiet=TRUE)
+    country_polygon <- st_transform(country_polygons[country_polygons$COUNTRY==country_name,'geometry'], crs=3857)
+    
+    centroids <- merge(st_transform(centroids, crs=3857), country_data, by='EA_Num')
+
+    knn_num <- floor(sqrt(dim(centroids)[1]))
+    knn_neigh <- knn2nb(knearneigh(centroids$geometry, k=knn_num))
+    knn_listw <- nb2listw(knn_neigh)
+    
+  
+    globalMoran_knn <- moran.test(centroids$Variable, knn_listw)
+    globalmoran_list <- c(globalmoran_list, globalMoran_knn[[3]][1])
+    globalmoran_p <- c(globalmoran_p, globalMoran_knn$p.value[1])
+    
+    local_knn <- localmoran(x = centroids$Variable, listw=knn_listw)
+
+    knn_listw2 <- knn_weights(centroids, knn_num, is_inverse=FALSE)
+    lisa <- local_joincount(knn_listw2, centroids['Variable'])
+
+    centroids$cluster <- as.factor(lisa$GetClusterIndicators())
+    levels(centroids$cluster) <- lisa$GetLabels()
+
+    quadrant_knn <- vector(mode="numeric",length=nrow(local_knn))
+    # centers the variable of interest around its mean
+    m.qualification <- centroids$Variable - mean(centroids$Variable)
+    # centers the local Moran's around the mean
+    m.local <- local_knn[,1] - mean(local_knn[,1])
+    # builds a data quadrant
+    quadrant_knn[m.qualification >0 & m.local>0] <- 4 # high-high
+    quadrant_knn[m.qualification <0 & m.local<0] <- 3 # low-low
+    quadrant_knn[m.qualification <0 & m.local>0] <- 1 # low-high
+    quadrant_knn[m.qualification >0 & m.local<0] <- 2 # high-low
+    quadrant_knn[local_knn[,5]>signif] <- 0
+
+    centroids$quadrant_knn <- quadrant_knn
+
+    gg_country <- ggplot() +
+        geom_sf(data = country_polygon, aes(fill=country_name), alpha=0, show.legend=FALSE) +
+        geom_sf(data = centroids %>% arrange(quadrant_knn), aes(geometry=geometry, color=as.factor(quadrant_knn)), size=1) +
+        scale_color_manual(values=colors_moran, name="Local Moran's I\nclusters") +
+        labs(x="",y="") + ggtitle(country_name) + theme(axis.text.x=element_blank(), axis.ticks.x=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank(),
+                                                        panel.grid.major = element_blank(), panel.grid.minor = element_blank(), plot.title = element_text(hjust = 0.5), plot.margin = unit(c(0.1,-4-3*floor(I/2),0,-6), "cm")) + theme(legend.position='bottom', legend.text=element_text(size=12))
+
+    legend <- get_legend(gg_country)
+
+    gg_country <- gg_country + theme(legend.position='none')
+
+    gg_list[[country]] <- gg_country
+
+    I <- I+1
+  }
+
+  # Arrange legend with plots
+
+  global_Morans[,outcome_q_num] <- globalmoran_list
+  global_Morans_p[,outcome_q_num] <- globalmoran_p
+
+  ga <- arrangeGrob(gg_list$nigeria, gg_list$ethiopia, gg_list$southafrica, gg_list$kenya, nrow=2, ncol=2, top=text_grob(paste(outcome_q,outvar_name),size = 15, face = "bold"))
+  gb <- rectGrob(height = 1, width = .8, gp = gpar(lwd = 2, col = "black", fill = NA)) # border, no fill
+  gt <- gTree(children = gList(ga, gb))
+  gt_list[[outcome_q_num]] <- gt
+}
+
+grid.newpage()
+final_grob <- arrangeGrob(gt_list[[1]],gt_list[[2]],gt_list[[3]],gt_list[[4]],gt_list[[5]],gt_list[[6]], nrow=3, ncol=2)
+grid.draw(final_grob)
+
+grid.newpage()
+grid.draw(legend)
+```
+
+Global Moran's I
+
+```{r}
+morans_df <- as.data.frame(global_Morans)
+colnames(morans_df) <- paste0(rep(outcome_qs,each=2), rep(c('F','E'),3))
+morans_df$Countries <- c('Kenya','Ethiopia','South Africa', 'Nigeria')
+
+morans_df2 <- morans_df %>% pivot_longer(cols=-c(Countries), names_to='Questions', values_to='Values') %>% mutate(Q_Num = case_when(
+    Questions == "Q54aF" ~ 0,
+    Questions == "Q54aE" ~ 3,
+    Questions == "Q54bF" ~ 1,
+    Questions == "Q54bE" ~ 4,
+    Questions == "Q54cF" ~ 2,
+    Questions == "Q54cE" ~ 5))
+
+ggplot(morans_df2, aes(x = Q_Num, y = Values, color = Countries)) +
+  geom_line(show.legend=TRUE) +
+  geom_point(size=2, show.legend=TRUE) +
+  #geom_point(auc_maxs, mapping=aes(x = Q_Num, y = max_AUC, color = Countries, shape=Stat), size=4) +
+  #geom_point(auc_mins, mapping=aes(x = Q_Num, y = min_AUC, color = Countries, shape=Stat), size=4) +
+  #scale_shape_manual(values=c(17,15)) +
+  geom_vline(xintercept = 2.5) +
+  labs(x="", y="Global Moran's I", shape="") +
+  scale_x_continuous(breaks=0:5, labels=rep(outcome_qs, 2), minor_breaks=c(2.5),guide=guide_axis_minor()) +
+  #scale_y_continuous(breaks=0:4*0.05+0.7, minor_breaks=0:16*0.0125+0.7) +
+  theme(ggh4x.axis.ticks.length.minor = rel(15), axis.text.x = element_text(color = "black", size=10, margin = margin(t = -35)), axis.text.y = element_text(color = "black", size=10), 
+        axis.title.y = element_text(color = "black", face="bold", size=11), panel.grid.minor.x = element_line(size = 1.5), legend.text=element_text(size=10)) +
+  coord_cartesian(ylim = c(0,0.35), clip = "off") +
+  annotate("text", x = c(1,4), y = 0, label = c('Fear','Experience'), vjust = 5, hjust=0.5, size = 4, fontface="bold", colour = "black")
+
+global_Morans
+global_Morans_p
+
+
+```
+
+Map of the outcome variables in the sub-national administrative units of the four countries
+
+```{r, fig.width=12, fig.height=14}
+library(rgeoda)
+
+gt_list = list()
+palettes <- c('Reds','Oranges','Greens','Blues','Purples','PuRd')
+variable <- 'OUT'
+var_maxs <- c(0.8125,0.65625,0.75,0.4375,0.8958334,0.65626)*100 
+
+legend_list = list()
+
+for(outcome_q_num in 1:6){
+
+  outcome_q <- outcome_qs[floor((outcome_q_num-1)/2)+1]
+  feared <- feareds[2-(outcome_q_num%%2)]
+  
+  palette <- palettes[outcome_q_num]
+  var_max <- var_maxs[outcome_q_num]
+  
+  if(feared){
+  	pos_values <- c(1,2)
+  	outvar_name <- 'Fear'
+  } else{
+  	pos_values <- c(2)
+  	outvar_name <- 'Experience'
+  }
+  
+  gg_list <- list()
+
+  I <-0
+  for(country in countries){
+  
+    country_acronym <- country_list[[country]]$acronym
+    country_name <- country_list[[country]]$name
+    country_data <- all_countries_data[all_countries_data$Country==country_acronym,]
+    
+    country_data$OUT <- ifelse(country_data[[outcome_q]] %in% pos_values, 1, 0)
+    country_data$EA_Num <- as.integer(gsub(country_acronym, "", country_data$EA_Num))
+    
+    country_data <- country_data %>% select(c('EA_Num',variable))
+    
+    centroids <- select(st_read(paste0('GIS/',country_acronym,'/',country_acronym,'_R8_PSU_centroids.shp'), quiet=TRUE),c("geometry","EA_Num"))
+    
+    district_polygons <- st_read(paste0('GIS/',country_acronym,'/',country,'_districts.shp'), quiet=TRUE)
+    district_polygons[['geometry']] <- st_transform(district_polygons[['geometry']], crs=4326)
+    centroids <- merge(st_transform(centroids, crs=4326), country_data, by='EA_Num')
+    
+    district_join <- st_join(district_polygons, centroids) %>%  group_by(ID) %>%  summarize(Variable = mean(.data[[variable]])*100)
+    
+    district_join$Variable[is.na(district_join$Variable)] <- 0
+
+    cat(outcome_q, outvar_name, country, max(district_join$Variable), '\n')
+
+    gg_country <- ggplot() +
+        geom_sf(data = district_join, aes(fill=Variable), linewidth=0.1) +
+        labs(x="",y="",fill="% Resp") +
+        scale_fill_distiller(palette = palette, name="% Resp", direction=1, limits=c(0,var_max)) +
+        ggtitle(country_name) + theme(axis.text.x=element_blank(), axis.ticks.x=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank(),
+                                                        panel.grid.major = element_blank(), panel.grid.minor = element_blank(), plot.title = element_text(hjust = 0.5), plot.margin = unit(c(0.1,-4-3*floor(I/2),0,-6), "cm")) + theme(legend.position='right', legend.text=element_text(size=11), legend.title=element_text(size=12))
+
+    legend <- get_legend(gg_country)
+    
+    if(I%%4!=0){
+      gg_country <- gg_country + theme(legend.position='none')
+    }
+
+    gg_list[[country]] <- gg_country
+
+    I <- I+1
+
+  }
+
+  legend_list <- append(legend_list, legend)
+
+  # Arrange legend with plots
+
+  ga <- arrangeGrob(gg_list$nigeria, gg_list$ethiopia, gg_list$southafrica, gg_list$kenya, nrow=2, ncol=2, top=text_grob(paste(outcome_q,outvar_name),size = 15, face = "bold"))
+  gb <- rectGrob(height = 1, width = .8, gp = gpar(lwd = 2, col = NA, fill = NA)) # border, no fill
+  gt <- gTree(children = gList(ga, gb))
+  gt_list[[outcome_q_num]] <- gt
+
+}
+
+grid.newpage()
+final_grob <- arrangeGrob(gt_list[[1]],gt_list[[2]],gt_list[[3]],gt_list[[4]],gt_list[[5]],gt_list[[6]], nrow=3, ncol=2)
+grid.draw(final_grob)
+```
+
+Correlation matrix: set "corr_scale" to "Resp" (Respondent) or "EA" (PSU) to see the corresponding matrix.
+
+```{r, fig.width=14, fig.height=8}
+corr_scale <- "EA"
+
+order_vars <- c(21,22,16,6,12,7,19,17,20,15,14,9,10,11,18,24,23,13,25,4,5,8,1,2,3,26)
+
+type_labels <- c('Environment', 'Economy', 'Grievance', 'Trust', 'Democracy', 'Other')
+
+types <- c(6,6,4,2,3,2,5,4,5,3,3,3,3,3,4,6,6,3,6,1,1,2,1,1,1,6)
+
+labels <- c("Q0",
+  "Q1",
+  "Q3",
+  "Q4b",
+  "Q5",
+  "Q7a",
+  "Q10a",
+  "Q43a",
+  "Q56",
+  "Q81",
+  "Q82a",
+  "Q84a",
+  "Q84b",
+  "Q84c",
+  "Q88",
+  "Q96c",
+  "Q97",
+  "Q98b",
+  "Urb/\nRur",
+  "EZ\nTemp",
+  "EZ\nMois",
+  "Night\nlight",
+  "RFE24",
+  "LST24",
+  "NDVI24",
+  "ACLED"
+)
+
+vjust_x <- 5.25
+vjust_y <- -8
+linestart_x <- -0.5
+linestart_y <- -0.7
+
+if(corr_scale=='Resp'){
+  order_vars <- order_vars[1:18]
+  labels <- labels[1:18]
+  types <- types[1:18]
+  vjust_x <- 4.5
+  vjust_y <- -6.5
+  linestart_x <- -0.05
+  linestart_y <- -0.2 
+
+}
+
+var_names <- vars_bj[scales==corr_scale][order(order_vars)]
+labels <- labels[order(order_vars)]
+types <- types[order(order_vars)]
+
+type_pos <- c()
+type_labels2 <- c()
+line_pos <- c()
+
+for(i in 1:length(type_labels)){
+  indexes <- which(types==i)
+  num_indexes <- length(indexes)
+  if(num_indexes==0){
+    next
+  }
+  first_index <- indexes[1]
+  last_index <- indexes[length(indexes)]
+  
+  index_pos <- (first_index+last_index)/2
+  type_pos <- c(type_pos,index_pos)
+  type_labels2 <- c(type_labels2, type_labels[i])
+  line_pos <- c(line_pos, first_index-0.5)
+}
+
+type_labels2 <- type_labels2[order(type_pos)]
+type_pos <- sort(type_pos)
+
+
+corr_matrix <- round(cor(all_countries_data_bj[, var_names]),2)
+# Melt the correlation matrix
+melted_cormat <- melt(corr_matrix, na.rm = TRUE)
+
+# Create a ggheatmap
+ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_x_discrete(labels=labels) +
+ scale_y_discrete(labels=labels) +
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 0, vjust = 1, 
+    size = 9.5, hjust = 0.5), axis.text.y = element_text(size=9.5))
+ #coord_fixed()
+ggheatmap + 
+geom_text(aes(Var2, Var1, label = value), color = "black", size = 3.5) +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_rect(colour = "black", fill=NA),
+  panel.background = element_blank(),
+  axis.ticks = element_blank(),
+  #legend.justification = c(1, 0),
+  #legend.position = c(0.6, 0.7),
+  #legend.direction = "horizontal")+
+  #guides(fill = guide_colorbar(barwidth = 7, barheight = 1,
+  #              title.position = "top", title.hjust = 0.5)
+  plot.margin = unit(c(0,0,0.5,1), "cm")) +
+  coord_cartesian(clip='off') +
+ annotate("text", x = type_pos, y = 0.7, label = type_labels2, vjust = vjust_x, hjust=0.5, size = 3, fontface="bold", colour = "black") +
+ annotate("text", x = 0.7, y = type_pos, label = type_labels2, angle=90, vjust = vjust_y, hjust=0.5, size = 3, fontface="bold", colour = "black") +
+  annotate("segment", x=line_pos, y=linestart_x, xend=line_pos, yend=length(labels)+0.5,
+               col="black") +
+  annotate("segment", y=line_pos, x=linestart_y, yend=line_pos, xend=length(labels)+0.5,
+               col="black") +
+  coord_cartesian(clip='off', ylim=c(1.1,length(labels)), xlim=c(1.1,length(labels)))
+
+melted_cormat %>% filter(value>= 0.4) %>% filter(value< 1)
+```
+Jaccard index diagram 
+
+```{r}
+library(psych)
+
+for(outcome_q in outcome_qs){
+  all_countries_data[[paste0(outcome_q,'Fear')]] <- ifelse(all_countries_data[[outcome_q]] %in% c(1,2), 1, 0)
+  all_countries_data[[paste0(outcome_q,'Experience')]] <- ifelse(all_countries_data[[outcome_q]] %in% c(2), 1, 0)
+}
+
+agreements_fear <- array(dim=c(length(countries)+1,3))
+agreements_exp <- array(dim=c(length(countries)+1,3))
+
+for(n in 1:(length(countries)+1)){
+
+  fear_vars <- paste0(outcome_qs,'Fear')
+  exp_vars <- paste0(outcome_qs,'Experience')
+  
+  country <- countries[n]
+  country_acronym <- country_list[[country]]$acronym
+  if(n==(length(countries)+1)){
+    country_data <- all_countries_data
+  }else{
+    country_data <- all_countries_data %>% filter(Country==country_acronym) %>% select(all_of(c(fear_vars,exp_vars)))
+  }
+  pop_num <- dim(country_data)[1]
+
+  cross_tab_fear <- melt(table(country_data[,fear_vars]))
+  cross_tab_exp <- melt(table(country_data[,exp_vars]))
+
+  for(i in 1:3){
+    indices <- c(1,2,3)[-c(i)]
+    
+    fear_one <- cross_tab_fear %>% filter(.data[[fear_vars[indices[1]]]]==1) %>% filter(.data[[fear_vars[indices[2]]]]==1) %>% summarise(value=sum(value)) %>% unlist() %>% unname()
+    fear_zero <- cross_tab_fear %>% filter(.data[[fear_vars[indices[1]]]]==0) %>% filter(.data[[fear_vars[indices[2]]]]==0) %>% summarise(value=sum(value)) %>% unlist() %>% unname()
+    exp_one <- cross_tab_exp %>% filter(.data[[exp_vars[indices[1]]]]==1) %>% filter(.data[[exp_vars[indices[2]]]]==1) %>% summarise(value=sum(value)) %>% unlist() %>% unname()
+    exp_zero <- cross_tab_exp %>% filter(.data[[exp_vars[indices[1]]]]==0) %>% filter(.data[[exp_vars[indices[2]]]]==0) %>% summarise(value=sum(value)) %>% unlist() %>% unname()
+    agreements_fear[n,i] <- fear_one/(pop_num-fear_zero)
+    agreements_exp[n,i] <- exp_one/(pop_num-exp_zero)
+  }
+
+}
+agreements_df <- data.frame(abind(agreements_fear,agreements_exp,along=2))
+colnames(agreements_df) <- c(substr(fear_vars,1,5),substr(exp_vars,1,5))
+agreements_df$Countries <- c('Kenya','Ethiopia','South Africa', 'Nigeria', 'All countries')
+
+agreements_df2 <- agreements_df %>% pivot_longer(cols=-c(Countries), names_to='Questions', values_to='Values') %>% mutate(Q_Num = case_when(
+    Questions == "Q54aF" ~ 0,
+    Questions == "Q54aE" ~ 3,
+    Questions == "Q54bF" ~ 1,
+    Questions == "Q54bE" ~ 4,
+    Questions == "Q54cF" ~ 2,
+    Questions == "Q54cE" ~ 5))
+
+ggplot(agreements_df2, aes(x = Q_Num, y = Values, color = Countries)) +
+  geom_line(show.legend=TRUE) +
+  geom_point(size=2, show.legend=TRUE) +
+  geom_vline(xintercept = 2.5) +
+  labs(x="", y="Jaccard index", shape="") +
+  scale_x_continuous(breaks=0:5, labels=c('Q54a\nQ54b','Q54a\nQ54c','Q54b\nQ54c','Q54a\nQ54b','Q54a\nQ54c','Q54b\nQ54c'), minor_breaks=c(2.5),guide=guide_axis_minor()) +
+  theme(ggh4x.axis.ticks.length.minor = rel(15), axis.text.x = element_text(color = "black", size=10, margin = margin(t = -35)), axis.text.y = element_text(color = "black", size=10), 
+        axis.title.y = element_text(color = "black", face="bold", size=11), panel.grid.minor.x = element_line(size = 1.5)) +
+  coord_cartesian(ylim = c(0.1,0.7), clip = "off") +
+  annotate("text", x = c(1,4), y = 0.1, label = c('Fear','Experience'), vjust = 6.5, hjust=0.5, size = 4, fontface="bold", colour = "black")
+
+
+```
+
+Latex table showing in how many models each explanatory variable is significant
+
+```{r}
+pvalue_EA_arr <- readRDS("Results/pvalues_EA_bj.Rda")
+pvalue_Resp_arr <- readRDS("Results/pvalues_Resp_bj.Rda")
+coef_EA_arr <- readRDS("Results/coefs_EA_bj.Rda")
+coef_Resp_arr <- readRDS("Results/coefs_Resp_bj.Rda")
+
+all_pvalue_EA_arr <- readRDS("Results/pvalues_EA_bj_allcountries.Rda")
+all_pvalue_Resp_arr <- readRDS("Results/pvalues_Resp_bj_allcountries.Rda")
+all_coef_EA_arr <- readRDS("Results/coefs_EA_bj_allcountries.Rda")
+all_coef_Resp_arr <- readRDS("Results/coefs_Resp_bj_allcountries.Rda")
+
+pvalue_EA_arr <- abind(pvalue_EA_arr, all_pvalue_EA_arr, along=2)
+pvalue_Resp_arr <- abind(pvalue_Resp_arr, all_pvalue_Resp_arr, along=2)
+coef_EA_arr <- abind(coef_EA_arr, all_coef_EA_arr, along=2)
+coef_Resp_arr <- abind(coef_Resp_arr, all_coef_Resp_arr, along=2)
+
+sig_thres <- 0.05
+
+signif_EA_arr <- pvalue_EA_arr < sig_thres
+signif_Resp_arr <- pvalue_Resp_arr < sig_thres
+signif_either_arr <- signif_EA_arr | signif_Resp_arr
+
+pos_EA_arr <- coef_EA_arr > 0 & signif_EA_arr
+neg_EA_arr <- coef_EA_arr < 0 & signif_EA_arr
+pos_Resp_arr <- coef_Resp_arr > 0 & signif_Resp_arr
+neg_Resp_arr <- coef_Resp_arr < 0 & signif_Resp_arr
+pos_arr <- pos_EA_arr + pos_Resp_arr
+neg_arr <- neg_EA_arr + neg_Resp_arr
+
+vars <- c("Q0: female gender?",
+          "Q1: age",
+          "Q3: country direction right?",
+          "Q4b: living conditions good?",
+          "Q5: govt discrimination (wealth)",
+          "Q7a: how long without food?",
+          "Q10a: freedom of speech",
+          "Q43a: corruption decreased?",
+          "Q56: media freedom",
+          "Q81: ethnic power",
+          "Q82a: govt discrimination (ethnicity)",
+          "Q84a: people discrimination (wealth)",
+          "Q84b: people discrimination (religion)",
+          "Q84c: people discrimination (ethnicity)",
+          "Q88: traditional leaders serve people?",
+          "Q96c: household of farmers?",
+          "Q97: level of education",
+          "Q98b: govt discrimination (religion)",
+          "Rural area?",
+          "Temperature Ecological Zone",
+          "Moisture Ecological Zone",
+          "Nighttime lights",
+          "RFE24: rainfall anomaly",
+          "LST24: temperature anomaly",
+          "NDVI24: vegetation anomaly",
+          "ACLED density")
+
+table_df <- data.frame(
+  variables = vars,
+  signif_either = apply(signif_either_arr, c(1),sum),
+  signif_Resp = apply(signif_Resp_arr, c(1),sum),
+  signif_EA = apply(signif_EA_arr, c(1),sum),
+  pos_either = apply(pos_arr, c(1),sum),
+  neg_either = apply(neg_arr, c(1),sum),
+  signif_all = apply(signif_either_arr[,5,], c(1), sum),
+  signif_nigeria = apply(signif_either_arr[,4,], c(1), sum),
+  signif_ethiopia = apply(signif_either_arr[,2,], c(1), sum),
+  signif_southafrica = apply(signif_either_arr[,3,], c(1), sum),
+  signif_kenya = apply(signif_either_arr[,1,], c(1), sum),
+  signif_Q54aF = apply(signif_either_arr[,,1], c(1), sum),
+  signif_Q54aE = apply(signif_either_arr[,,2], c(1), sum),
+  signif_Q54bF = apply(signif_either_arr[,,3], c(1), sum),
+  signif_Q54bE = apply(signif_either_arr[,,4], c(1), sum),
+  signif_Q54cF = apply(signif_either_arr[,,5], c(1), sum),
+  signif_Q54cE = apply(signif_either_arr[,,6], c(1), sum)
+) %>% arrange(desc(signif_either))
+
+cat("\\begin{tabular}{?l?c|cc|cc?c|c|c|c|c?cc|cc|cc?}",'\n')
+cat("\\Xhline{4\\arrayrulewidth}",'\n')
+cat("\\multirow{2}{*}{\\textbf{Variable}} & \\multicolumn{5}{c?}{\\textbf{All models}} & 	\\textbf{All} & \\multirow{2}{*}{\\textbf{Nigeria}} & 	\\multirow{2}{*}{\\textbf{Ethiopia}} & \\textbf{South} & 	\\multirow{2}{*}{\\textbf{Kenya}} &  \\multicolumn{2}{c|}{\\textbf{Q54a}} & \\multicolumn{2}{c|}{\\textbf{Q54b}} & \\multicolumn{2}{c?}{\\textbf{Q54c}} \\\\","\n")
+cat("\\cline{2-6}\\cline{12-17}")
+cat("& \\phantom{Miao} & Resp & PSU & Pos & Neg & \\textbf{countries} & & & \\textbf{Africa} & & Fear & Exp & Fear & Exp & Fear & Exp\\\\","\n")
+cat("\\Xhline{4\\arrayrulewidth}",'\n')
+write.table(table_df, row.names=F, col.names=F, quote=F, sep=" & ", eol='\\\\\n')
+cat("\\Xhline{4\\arrayrulewidth}",'\n')
+cat("\\end{tabular}",'\n')
+
+
+
+```
+
+
+
+
