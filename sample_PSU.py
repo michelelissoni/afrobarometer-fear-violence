@@ -219,7 +219,7 @@ for country in list(country_codes.keys()):
 		# This function creates the bi-yearly means
 		def year_mapper(date_str):
 			startDate = ee.Date(date_str)
-			endDate = startDate.advance(1, 'year')
+			endDate = startDate.advance(win_len, 'year')
 			biYearlyCollection = ndvi_dataset.filterDate(startDate, endDate)
 
 			biYearlyMean = biYearlyCollection.mean();
