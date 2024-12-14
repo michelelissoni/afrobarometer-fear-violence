@@ -8,8 +8,8 @@ Ethiopia, South Africa and Kenya.
 The scripts in this repository are written in a mix of Python and R. Most are designed to be operated from the 
 command line, but the thesis figures are produced using Jupyter Notebooks and R Markdowns.
 
-The data and the complete results of the regressions are available at [afrobarometer-fear-violence-drive](https://drive.google.com/drive/folders/17uVDb_O3bwmzv2DRca-LNa15jkRg28dB?usp=sharing). If you intend to replicate the work, download this entire folder, which also contains
-the scripts. 
+The data are available at [afrobarometer-fear-violence-drive](https://drive.google.com/drive/folders/17uVDb_O3bwmzv2DRca-LNa15jkRg28dB?usp=sharing). If you intend to replicate the work, download this entire folder, which also contains
+the scripts. The Results folder, specifically, contains the complete results of the regressions.
 
 The respondent-level Afrobarometer Round 8 data used in the study are not made available, in compliance with the 
 Afrobarometer data policy, but they can be requested at https://www.afrobarometer.org/contact-us/data-requests/.
