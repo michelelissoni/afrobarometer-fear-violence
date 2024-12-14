@@ -1,7 +1,4 @@
-# ENVIRONMENTAL OR SOCIOECONOMIC? COMPARING DRIVERS OF FEAR AND EXPERIENCE OF VIOLENCE IN FOUR SUB-SAHARAN COUNTRIES
-
-Master of Arts, Department of Geography, CU Boulder  
-Michele Lissoni  
+# ENVIRONMENTAL OR SOCIOECONOMIC? COMPARING DRIVERS OF FEAR AND EXPERIENCE OF VIOLENCE IN FOUR SUB-SAHARAN COUNTRIES 
 ___
 
 This repository contains the code and some of the data used in my thesis work, whose goal was to model the drivers
